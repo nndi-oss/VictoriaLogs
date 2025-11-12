@@ -4,8 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
-	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/httputil"
 
@@ -14,7 +14,6 @@ import (
 )
 
 var disableMessageParsing = flag.Bool("loki.disableMessageParsing", false, "Whether to disable automatic parsing of JSON-encoded log fields inside Loki log message into distinct log fields")
-var contentTypeRegexp = regexp.MustCompile(`^application/json`)
 
 // RequestHandler processes Loki insert requests
 func RequestHandler(path string, w http.ResponseWriter, r *http.Request) bool {
@@ -36,7 +35,7 @@ func RequestHandler(path string, w http.ResponseWriter, r *http.Request) bool {
 func handleInsert(r *http.Request, w http.ResponseWriter) {
 	contentType := r.Header.Get("Content-Type")
 	switch {
-	case contentTypeRegexp.MatchString(contentType):
+	case strings.HasPrefix(contentType, "application/json"):
 		handleJSON(r, w)
 	default:
 		// Protobuf request body should be handled by default according to https://grafana.com/docs/loki/latest/api/#push-log-entries-to-loki
