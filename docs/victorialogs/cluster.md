@@ -184,7 +184,23 @@ style LS fill:#9fe49b
 
 There is no magic coordination logic or consensus algorithms in this scheme. This simplifies managing and troubleshooting this HA scheme.
 
-See also [Security and Load balancing docs](https://docs.victoriametrics.com/victorialogs/security-and-lb/).
+See also [replication](https://docs.victoriametrics.com/victorialogs/cluster/#replication) and [Security and Load balancing docs](https://docs.victoriametrics.com/victorialogs/security-and-lb/).
+
+## Replication
+
+`vlinsert` doesn't replicate incoming logs among `vlstorage` nodes. Instead, it spreads evenly (shards) incoming logs among `vlstorage` nodes specified in the `-storageNode` command-line flag.
+This provides cost-efficient linear scalability for the cluster capacity, data ingestion performance and querying performance proportional to the number of `vlstorage` nodes.
+
+It is recommended making regular backups for the data stored across all the `vlstorage` nodes in order to make sure that the data isn't lost in case of any disaster
+(such as accidental data removal because of incorrect config updates or incorrect upgrades, or physical corruption of the data on the persistent storage).
+See [how to backup and restore data for VictoriaLogs - these docs apply to vlstorage nodes](https://docs.victoriametrics.com/victorialogs/#backup-and-restore).
+
+If you need restoring the data between the backup time and the current time, then it is recommended building
+[HA setup for VictoriaLogs cluster](https://docs.victoriametrics.com/victorialogs/cluster/#high-availability),
+so you could copy the needed per-day partitions from cluster replica.
+
+Usually the disaster event occurs rarely (e.g. once per year). Every such event has unique preconditions and consequences,
+so it is impossible to automate recovering from disaster events. These events require human attention and manual actions.
 
 ## Single-node and cluster mode duality
 
