@@ -29,6 +29,7 @@ according to the follosing docs:
 * FEATURE: [web UI](https://docs.victoriametrics.com/victorialogs/querying/#web-ui): auto-sync time picker with `_time` filter from the query (can be disabled). See [#558](https://github.com/VictoriaMetrics/VictoriaLogs/issues/558).
 
 * BUGFIX: [delete API](https://docs.victoriametrics.com/victorialogs/#how-to-delete-logs): prevent from possible fatal error (panic) at `block_stream_merger.go:237` during the deletion of the logs. See [#825](https://github.com/VictoriaMetrics/VictoriaLogs/issues/825).
+* BUGFIX: [`/select/logsql/query` endpoint](https://docs.victoriametrics.com/victorialogs/querying/#querying-logs): properly return the last N logs with the biggest timestamps when the `limit=N` query arg is passed to this endpoint. Also, properly return logs from [LogsQL queries](https://docs.victoriametrics.com/victorialogs/logsql/) ending with `| sort by (_time desc) limit N` pipe. Previously some logs may be missing because of off-by-one error. See [#802](https://github.com/VictoriaMetrics/VictoriaLogs/issues/802).
 
 ## [v1.38.0](https://github.com/VictoriaMetrics/VictoriaLogs/releases/tag/v1.38.0)
 
