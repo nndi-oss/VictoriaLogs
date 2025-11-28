@@ -257,6 +257,7 @@ func ProcessHitsRequest(ctx context.Context, w http.ResponseWriter, r *http.Requ
 
 	// Add a pipe, which calculates hits over time with the given step and offset for the given fields.
 	ca.q.AddCountByTimePipe(int64(step), int64(offset), fields)
+	start, end := ca.q.GetFilterTimeRange()
 
 	var mLock sync.Mutex
 	m := make(map[string]*hitsSeries)
@@ -273,7 +274,10 @@ func ProcessHitsRequest(ctx context.Context, w http.ResponseWriter, r *http.Requ
 
 		bb := blockResultPool.Get()
 		for i := 0; i < rowsCount; i++ {
-			timestampStr := strings.Clone(timestampValues[i])
+			timestampNsec, ok := logstorage.TryParseTimestampRFC3339Nano(timestampValues[i])
+			if !ok {
+				logger.Panicf("BUG: cannot parse timestamp=%q", timestampValues[i])
+			}
 			hitsStr := strings.Clone(hitsValues[i])
 			hits, err := strconv.ParseUint(hitsStr, 10, 64)
 			if err != nil {
@@ -286,11 +290,10 @@ func ProcessHitsRequest(ctx context.Context, w http.ResponseWriter, r *http.Requ
 			mLock.Lock()
 			hs, ok := m[string(bb.B)]
 			if !ok {
-				k := string(bb.B)
 				hs = &hitsSeries{}
-				m[k] = hs
+				m[string(bb.B)] = hs
 			}
-			hs.timestamps = append(hs.timestamps, timestampStr)
+			hs.timestamps = append(hs.timestamps, timestampNsec)
 			hs.hits = append(hs.hits, hits)
 			hs.hitsTotal += hits
 			mLock.Unlock()
@@ -309,6 +312,7 @@ func ProcessHitsRequest(ctx context.Context, w http.ResponseWriter, r *http.Requ
 	}
 
 	m = getTopHitsSeries(m, fieldsLimit)
+	addMissingZeroHits(m, start, end, int64(step), int64(offset))
 
 	// Write response headers
 	h := w.Header()
@@ -318,6 +322,47 @@ func ProcessHitsRequest(ctx context.Context, w http.ResponseWriter, r *http.Requ
 
 	// Write response
 	WriteHitsSeries(w, m)
+}
+
+func addMissingZeroHits(m map[string]*hitsSeries, start, end, step, offset int64) {
+	if start == math.MinInt64 {
+		start = math.MaxInt64
+		for _, hs := range m {
+			start = min(start, slices.Min(hs.timestamps))
+		}
+	} else {
+		start -= start%step - offset
+	}
+
+	if end == math.MaxInt64 {
+		end = math.MinInt64
+		for _, hs := range m {
+			end = max(end, slices.Max(hs.timestamps))
+		}
+	} else {
+		end -= start%step - offset
+	}
+
+	if start > end {
+		// nothing to do
+		return
+	}
+
+	for _, hs := range m {
+		ts := start
+		for ts <= end {
+			if !slices.Contains(hs.timestamps, ts) {
+				hs.timestamps = append(hs.timestamps, ts)
+				hs.hits = append(hs.hits, 0)
+			}
+
+			if ts+step < ts {
+				// stop on int64 overflow
+				break
+			}
+			ts += step
+		}
+	}
 }
 
 var blockResultPool bytesutil.ByteBufferPool
@@ -342,15 +387,15 @@ func getTopHitsSeries(m map[string]*hitsSeries, fieldsLimit int) map[string]*hit
 		return a[i].hs.hitsTotal > a[j].hs.hitsTotal
 	})
 
-	hitsOther := make(map[string]uint64)
+	hitsOther := make(map[int64]uint64)
 	for _, x := range a[fieldsLimit:] {
-		for i, timestampStr := range x.hs.timestamps {
-			hitsOther[timestampStr] += x.hs.hits[i]
+		for i, timestamp := range x.hs.timestamps {
+			hitsOther[timestamp] += x.hs.hits[i]
 		}
 	}
 	var hsOther hitsSeries
-	for timestampStr, hits := range hitsOther {
-		hsOther.timestamps = append(hsOther.timestamps, timestampStr)
+	for timestamp, hits := range hitsOther {
+		hsOther.timestamps = append(hsOther.timestamps, timestamp)
 		hsOther.hits = append(hsOther.hits, hits)
 		hsOther.hitsTotal += hits
 	}
@@ -366,7 +411,7 @@ func getTopHitsSeries(m map[string]*hitsSeries, fieldsLimit int) map[string]*hit
 
 type hitsSeries struct {
 	hitsTotal  uint64
-	timestamps []string
+	timestamps []int64
 	hits       []uint64
 }
 
