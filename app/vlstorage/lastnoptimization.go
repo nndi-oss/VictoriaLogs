@@ -2,6 +2,7 @@ package vlstorage
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"sync"
@@ -56,7 +57,9 @@ func getLastNQueryResults(qctx *logstorage.QueryContext, limit uint64) ([]logRow
 
 	// Slow path - use binary search for adjusting time range for selecting up to 2*limit rows.
 	start, end := q.GetFilterTimeRange()
-	end++
+	if end < math.MaxInt64 {
+		end++
+	}
 	start += end/2 - start/2
 	n := limit
 
